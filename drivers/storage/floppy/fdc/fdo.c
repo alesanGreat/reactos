@@ -157,6 +157,14 @@ FdcFdoConfigCallback(
     DeviceExtension = (PFDO_DEVICE_EXTENSION)Context;
 
     /* Get the controller resources */
+    if (ControllerInformation == NULL ||
+        ControllerInformation[IoQueryDeviceConfigurationData] == NULL)
+    {
+        DPRINT1("Ignoring controller %lu: no configuration data\n",
+                ControllerNumber);
+        return STATUS_SUCCESS;
+    }
+
     ControllerFullDescriptor = ControllerInformation[IoQueryDeviceConfigurationData];
     ControllerResourceDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)ControllerFullDescriptor +
                                                                   ControllerFullDescriptor->DataOffset);
@@ -183,6 +191,14 @@ FdcFdoConfigCallback(
         return STATUS_SUCCESS;
 
     /* Get the peripheral resources */
+    if (PeripheralInformation == NULL ||
+        PeripheralInformation[IoQueryDeviceConfigurationData] == NULL)
+    {
+        DPRINT1("Ignoring floppy drive %lu: no configuration data\n",
+                PeripheralNumber);
+        return STATUS_SUCCESS;
+    }
+
     PeripheralFullDescriptor = PeripheralInformation[IoQueryDeviceConfigurationData];
     PeripheralResourceDescriptor = (PCM_FULL_RESOURCE_DESCRIPTOR)((PCHAR)PeripheralFullDescriptor +
                                                                   PeripheralFullDescriptor->DataOffset);
@@ -194,6 +210,14 @@ FdcFdoConfigCallback(
 
         if (PartialDescriptor->Type != CmResourceTypeDeviceSpecific)
             continue;
+
+        if (PartialDescriptor->u.DeviceSpecificData.DataSize < sizeof(CM_FLOPPY_DEVICE_DATA))
+        {
+            DPRINT1("Ignoring floppy drive %lu: device-specific data is too small (%lu bytes)\n",
+                    PeripheralNumber,
+                    PartialDescriptor->u.DeviceSpecificData.DataSize);
+            continue;
+        }
 
         if (DeviceExtension->ControllerInfo.NumberOfDrives >= MAX_DRIVES_PER_CONTROLLER)
         {
