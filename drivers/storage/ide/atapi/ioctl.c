@@ -234,7 +234,7 @@ AtaPdoQueryStorageDeviceTrimProperty(
     TrimDescriptor = Irp->AssociatedIrp.SystemBuffer;
     TrimDescriptor->Version = sizeof(*TrimDescriptor);
     TrimDescriptor->Size = sizeof(*TrimDescriptor);
-    TrimDescriptor->TrimEnabled = AtaDevHasTrimFunction(&DevExt->IdentifyDeviceData);
+    TrimDescriptor->TrimEnabled = AtaDevCanUseDsmTrim(DevExt);
 
     Irp->IoStatus.Information = sizeof(*TrimDescriptor);
     return STATUS_SUCCESS;
