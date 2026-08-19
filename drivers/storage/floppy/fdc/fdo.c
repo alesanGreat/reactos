@@ -86,6 +86,9 @@ FdcFdoStartDevice(
                 DPRINT("Port: 0x%lx (%lu)\n",
                         PartialDescriptor->u.Port.Start.u.LowPart,
                         PartialDescriptor->u.Port.Length);
+                DPRINT1("FDC_DIAG_FDO_PORT start=0x%lx length=%lu\n",
+                        PartialDescriptor->u.Port.Start.u.LowPart,
+                        PartialDescriptor->u.Port.Length);
                 if (PartialDescriptor->u.Port.Length >= 6)
                     DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)(ULONG_PTR)PartialDescriptor->u.Port.Start.QuadPart;
                 break;
@@ -147,6 +150,10 @@ FdcFdoConfigCallback(
     DPRINT("FdcFdoConfigCallback() called\n");
 
     DeviceExtension = (PFDO_DEVICE_EXTENSION)Context;
+    DPRINT1("FDC_DIAG_CALLBACK controller=%lu peripheral=%lu fdo_base=%p\n",
+            ControllerNumber,
+            PeripheralNumber,
+            DeviceExtension->ControllerInfo.BaseAddress);
 
     /* Get the controller resources */
     ControllerFullDescriptor = ControllerInformation[IoQueryDeviceConfigurationData];
@@ -159,6 +166,10 @@ FdcFdoConfigCallback(
 
         if (PartialDescriptor->Type == CmResourceTypePort)
         {
+            DPRINT1("FDC_DIAG_FW_PORT start=0x%lx length=%lu fdo_base=%p\n",
+                    PartialDescriptor->u.Port.Start.u.LowPart,
+                    PartialDescriptor->u.Port.Length,
+                    DeviceExtension->ControllerInfo.BaseAddress);
             if ((PUCHAR)(ULONG_PTR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress)
                 ControllerFound = TRUE;
         }
@@ -166,7 +177,12 @@ FdcFdoConfigCallback(
 
     /* Leave, if the enumerated controller is not the one represented by the FDO */
     if (ControllerFound == FALSE)
+    {
+        DPRINT1("FDC_DIAG_CALLBACK_SKIP controller=%lu peripheral=%lu\n",
+                ControllerNumber,
+                PeripheralNumber);
         return STATUS_SUCCESS;
+    }
 
     /* Get the peripheral resources */
     PeripheralFullDescriptor = PeripheralInformation[IoQueryDeviceConfigurationData];
@@ -214,6 +230,10 @@ FdcFdoConfigCallback(
 
         /* Once it's all set up, acknowledge its existence in the controller info object */
         DeviceExtension->ControllerInfo.NumberOfDrives++;
+        DPRINT1("FDC_DIAG_DRIVE peripheral=%lu unit=%u count=%lu\n",
+                PeripheralNumber,
+                DriveInfo->UnitNumber,
+                DeviceExtension->ControllerInfo.NumberOfDrives);
     }
 
     DeviceExtension->ControllerInfo.Populated = TRUE;
@@ -346,6 +366,10 @@ FdcFdoQueryBusRelations(
                                           NULL,
                                           FdcFdoConfigCallback,
                                           FdoDeviceExtension);
+        DPRINT1("FDC_DIAG_QUERY status=0x%08lx drives=%lu base=%p\n",
+                Status,
+                FdoDeviceExtension->ControllerInfo.NumberOfDrives,
+                FdoDeviceExtension->ControllerInfo.BaseAddress);
         if (!NT_SUCCESS(Status) && (Status != STATUS_NO_MORE_ENTRIES))
             return Status;
 
@@ -502,6 +526,11 @@ FdcFdoQueryBusRelations(
 
     ASSERT(AddedCount == MissingCount);
     Relations->Count = ExistingCount + AddedCount;
+    DPRINT1("FDC_DIAG_RELATIONS existing=%lu missing=%lu added=%lu total=%lu\n",
+            ExistingCount,
+            MissingCount,
+            AddedCount,
+            Relations->Count);
 
     /* Only publish PDO presence after the complete relations query succeeds. */
     for (i = 0; i < FdoDeviceExtension->ControllerInfo.NumberOfDrives; i++)
