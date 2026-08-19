@@ -46,7 +46,8 @@ typedef struct _CONTROLLER_INFO
 //    ULONG            Vector;
 //    ULONG            MappedVector;
 //    KINTERRUPT_MODE  InterruptMode;
-    PUCHAR           BaseAddress;
+    BOOLEAN          PortAddressValid;
+    PHYSICAL_ADDRESS PortAddress;
 //    ULONG            Dma;
 //    ULONG            MapRegisters;
 //    PVOID            MapRegisterBase;

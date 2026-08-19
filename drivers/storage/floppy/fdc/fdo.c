@@ -75,6 +75,9 @@ FdcFdoStartDevice(
         return STATUS_REVISION_MISMATCH;
     }
 
+    DeviceExtension->ControllerInfo.PortAddressValid = FALSE;
+    DeviceExtension->ControllerInfo.PortAddress.QuadPart = 0;
+
     for (i = 0; i < ResourceList->List[0].PartialResourceList.Count; i++)
     {
         PartialDescriptor = &ResourceList->List[0].PartialResourceList.PartialDescriptors[i];
@@ -86,8 +89,13 @@ FdcFdoStartDevice(
                 DPRINT("Port: 0x%lx (%lu)\n",
                         PartialDescriptor->u.Port.Start.u.LowPart,
                         PartialDescriptor->u.Port.Length);
-                if (PartialDescriptor->u.Port.Length >= 6)
-                    DeviceExtension->ControllerInfo.BaseAddress = (PUCHAR)(ULONG_PTR)PartialDescriptor->u.Port.Start.QuadPart;
+                if (!DeviceExtension->ControllerInfo.PortAddressValid ||
+                    PartialDescriptor->u.Port.Start.QuadPart <
+                        DeviceExtension->ControllerInfo.PortAddress.QuadPart)
+                {
+                    DeviceExtension->ControllerInfo.PortAddress = PartialDescriptor->u.Port.Start;
+                    DeviceExtension->ControllerInfo.PortAddressValid = TRUE;
+                }
                 break;
 
             case CmResourceTypeInterrupt:
@@ -157,10 +165,16 @@ FdcFdoConfigCallback(
     {
         PartialDescriptor = &ControllerResourceDescriptor->PartialResourceList.PartialDescriptors[i];
 
-        if (PartialDescriptor->Type == CmResourceTypePort)
+        if (PartialDescriptor->Type == CmResourceTypePort &&
+            DeviceExtension->ControllerInfo.PortAddressValid &&
+            DeviceExtension->ControllerInfo.PortAddress.QuadPart >=
+                PartialDescriptor->u.Port.Start.QuadPart &&
+            DeviceExtension->ControllerInfo.PortAddress.QuadPart -
+                PartialDescriptor->u.Port.Start.QuadPart <
+                PartialDescriptor->u.Port.Length)
         {
-            if ((PUCHAR)(ULONG_PTR)PartialDescriptor->u.Port.Start.QuadPart == DeviceExtension->ControllerInfo.BaseAddress)
-                ControllerFound = TRUE;
+            ControllerFound = TRUE;
+            break;
         }
     }
 
