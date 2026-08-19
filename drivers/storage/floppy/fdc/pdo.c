@@ -93,6 +93,29 @@ FdcPdoQueryId(
 }
 
 
+static
+NTSTATUS
+FdcPdoQueryTargetDeviceRelation(
+    IN PDEVICE_OBJECT DeviceObject,
+    OUT ULONG_PTR *Information)
+{
+    PDEVICE_RELATIONS Relations;
+
+    Relations = ExAllocatePoolWithTag(PagedPool,
+                                      sizeof(DEVICE_RELATIONS),
+                                      FDC_TAG);
+    if (Relations == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Relations->Count = 1;
+    Relations->Objects[0] = DeviceObject;
+    ObReferenceObject(DeviceObject);
+
+    *Information = (ULONG_PTR)Relations;
+    return STATUS_SUCCESS;
+}
+
+
 VOID
 FdcPdoDeleteDevice(
     IN PDEVICE_OBJECT DeviceObject)
@@ -133,13 +156,14 @@ FdcPdoPnp(
 {
     PPDO_DEVICE_EXTENSION DeviceExtension;
     PIO_STACK_LOCATION IrpSp;
-    ULONG_PTR Information = 0;
+    ULONG_PTR Information;
     NTSTATUS Status;
     BOOLEAN DeleteDevice = FALSE;
 
     DPRINT("FdcPdoPnp()\n");
 
     Status = Irp->IoStatus.Status;
+    Information = Irp->IoStatus.Information;
     DeviceExtension = (PPDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -165,6 +189,8 @@ FdcPdoPnp(
 
         case IRP_MN_QUERY_DEVICE_RELATIONS:
             DPRINT("IRP_MN_QUERY_DEVICE_RELATIONS received\n");
+            if (IrpSp->Parameters.QueryDeviceRelations.Type == TargetDeviceRelation)
+                Status = FdcPdoQueryTargetDeviceRelation(DeviceObject, &Information);
             break;
 
         case IRP_MN_QUERY_DEVICE_TEXT:
@@ -194,6 +220,7 @@ FdcPdoPnp(
 
         case IRP_MN_START_DEVICE:
             DPRINT("IRP_MN_START_DEVICE received\n");
+            Status = STATUS_SUCCESS;
             break;
 
         case IRP_MN_QUERY_STOP_DEVICE:

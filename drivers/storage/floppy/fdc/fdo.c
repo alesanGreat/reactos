@@ -365,7 +365,32 @@ FdcFdoQueryBusRelations(
     }
 
     if (MissingCount == 0)
+    {
+        if (ExistingRelations != NULL)
+        {
+            for (i = 0; i < FdoDeviceExtension->ControllerInfo.NumberOfDrives; i++)
+            {
+                DriveInfo = &FdoDeviceExtension->ControllerInfo.DriveInfo[i];
+                if (DriveInfo->DeviceObject != NULL)
+                {
+                    PdoDeviceExtension = (PPDO_DEVICE_EXTENSION)DriveInfo->DeviceObject->DeviceExtension;
+                    PdoDeviceExtension->ReportedPresent = TRUE;
+                }
+            }
+
+            return STATUS_SUCCESS;
+        }
+
+        Relations = ExAllocatePoolWithTag(PagedPool,
+                                          FIELD_OFFSET(DEVICE_RELATIONS, Objects),
+                                          FDC_TAG);
+        if (Relations == NULL)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Relations->Count = 0;
+        *DeviceRelations = Relations;
         return STATUS_SUCCESS;
+    }
 
     if (ExistingCount > MAXULONG - MissingCount)
         return STATUS_INTEGER_OVERFLOW;
@@ -583,7 +608,8 @@ FdcFdoPnp(
 
         case IRP_MN_QUERY_REMOVE_DEVICE:
             DPRINT("  IRP_MN_QUERY_REMOVE_DEVICE\n");
-            break;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return ForwardIrpAndForget(DeviceObject, Irp);
 
         case IRP_MN_REMOVE_DEVICE:
             DPRINT("  IRP_MN_REMOVE_DEVICE received\n");
@@ -607,19 +633,23 @@ FdcFdoPnp(
 
         case IRP_MN_CANCEL_REMOVE_DEVICE:
             DPRINT("  IRP_MN_CANCEL_REMOVE_DEVICE\n");
-            break;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return ForwardIrpAndForget(DeviceObject, Irp);
 
         case IRP_MN_STOP_DEVICE:
             DPRINT("  IRP_MN_STOP_DEVICE received\n");
-            break;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return ForwardIrpAndForget(DeviceObject, Irp);
 
         case IRP_MN_QUERY_STOP_DEVICE:
             DPRINT("  IRP_MN_QUERY_STOP_DEVICE received\n");
-            break;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return ForwardIrpAndForget(DeviceObject, Irp);
 
         case IRP_MN_CANCEL_STOP_DEVICE:
             DPRINT("  IRP_MN_CANCEL_STOP_DEVICE\n");
-            break;
+            Irp->IoStatus.Status = STATUS_SUCCESS;
+            return ForwardIrpAndForget(DeviceObject, Irp);
 
         case IRP_MN_QUERY_DEVICE_RELATIONS:
             DPRINT("  IRP_MN_QUERY_DEVICE_RELATIONS\n");
@@ -632,7 +662,11 @@ FdcFdoPnp(
                                                      (PDEVICE_RELATIONS)Information,
                                                      &DeviceRelations);
                     if (NT_SUCCESS(Status))
-                        Information = (ULONG_PTR)DeviceRelations;
+                    {
+                        Irp->IoStatus.Information = (ULONG_PTR)DeviceRelations;
+                        Irp->IoStatus.Status = STATUS_SUCCESS;
+                        return ForwardIrpAndForget(DeviceObject, Irp);
+                    }
                     break;
 
                 case RemovalRelations:
