@@ -759,6 +759,12 @@ VmxInitialize(IN PVOID HwDeviceExtension)
         return FALSE;
     }
 
+    DPRINT1("VMX_RUNTIME_READY: version=%lu modes=%lu vram=%lu fifo=%lu\n",
+            DeviceExtension->Version,
+            DeviceExtension->VideoModeCount,
+            DeviceExtension->VramSize,
+            DeviceExtension->MemSize);
+
     return TRUE;
 }
 
