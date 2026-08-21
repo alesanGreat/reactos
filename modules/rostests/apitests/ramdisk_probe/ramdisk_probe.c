@@ -135,7 +135,7 @@ main(void)
     if ((DiskLength <= 0) ||
         (SectorSize == 0) ||
         (SectorSize > sizeof(Buffer) / 2) ||
-        (DiskLength < SectorSize))
+        (DiskLength < 4 * (LONGLONG)SectorSize))
     {
         LogLine("RAMDISK_PROBE_INVALID_GEOMETRY\r\n");
     }
@@ -144,8 +144,8 @@ main(void)
         ProbeRead(DiskHandle, "last-sector", DiskLength - SectorSize, SectorSize);
         ProbeRead(DiskHandle, "at-eof", DiskLength, SectorSize);
         ProbeRead(DiskHandle, "cross-eof", DiskLength - SectorSize, SectorSize * 2);
-        ProbeRead(DiskHandle, "misaligned-offset", DiskLength - SectorSize + 1, SectorSize);
-        ProbeRead(DiskHandle, "misaligned-length", DiskLength - SectorSize, SectorSize + 1);
+        ProbeRead(DiskHandle, "misaligned-offset", SectorSize + 1, SectorSize);
+        ProbeRead(DiskHandle, "misaligned-length", SectorSize, SectorSize + 1);
     }
 
     CloseHandle(DiskHandle);
