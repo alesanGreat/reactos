@@ -88,6 +88,8 @@ main(void)
     DWORD SectorSize;
     LONGLONG DiskLength;
 
+    DbgPrint("RAMDISK_PROBE_ENTRY\r\n");
+
     LogHandle = CreateFileA("\\\\.\\COM2",
                             GENERIC_WRITE,
                             FILE_SHARE_READ | FILE_SHARE_WRITE,
