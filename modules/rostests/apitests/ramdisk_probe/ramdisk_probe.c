@@ -10,8 +10,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-ULONG __cdecl DbgPrint(IN PCH Format, IN ...);
-
 static HANDLE LogHandle = INVALID_HANDLE_VALUE;
 static BYTE Buffer[8192];
 
