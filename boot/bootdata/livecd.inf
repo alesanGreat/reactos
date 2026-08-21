@@ -25,7 +25,10 @@ HKLM,"SYSTEM\CurrentControlSet\Services\Cdrom","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager","BootExecute",0x00010000,""
 
 ; Shell
-HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"ramdisk_probe.exe"
+HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"setup -mini"
+
+; TEMP RAMDISK probe: Explorer processes HKLM RunOnce before creating the desktop.
+HKLM,"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce","RamdiskProbe",0x00020000,"%SystemRoot%\system32\ramdisk_probe.exe"
 
 ; User Profile List
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",,0x00000012
