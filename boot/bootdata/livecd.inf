@@ -25,8 +25,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\Cdrom","Start",0x00010001,0x00000000
 HKLM,"SYSTEM\CurrentControlSet\Control\Session Manager","BootExecute",0x00010000,""
 
 ; Shell
-; TEMP RAMDISK probe: Winlogon executes Setup\CmdLine directly while SetupType != 0.
-HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"%SystemRoot%\system32\ramdisk_probe.exe"
+HKLM,"SYSTEM\Setup","CmdLine",0x00020000,"setup -mini"
 
 ; User Profile List
 HKLM,"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList",,0x00000012
