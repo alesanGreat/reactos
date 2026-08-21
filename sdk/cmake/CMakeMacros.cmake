@@ -408,7 +408,7 @@ function(create_iso_lists)
         DESTINATION reactos
         NO_CAB FOR bootcd regtest)
 
-if(FALSE) ## Disabled until we want a RAMDISK ISO
+if(TRUE) ## TEMP RAMDISK probe: include liveimg.iso in BootCD
     # Add the LiveImage into the BootCD
     add_cd_file(
         TARGET livecd
