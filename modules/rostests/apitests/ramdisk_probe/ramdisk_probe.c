@@ -75,6 +75,87 @@ ProbeRead(HANDLE DiskHandle,
             IoStatusBlock.Information);
 }
 
+static BOOL
+LoadKernelProbe(VOID)
+{
+    WCHAR DriverPath[MAX_PATH];
+    SC_HANDLE ScmHandle;
+    SC_HANDLE ServiceHandle;
+    DWORD Error;
+    UINT Length;
+
+    Length = GetSystemDirectoryW(DriverPath, ARRAYSIZE(DriverPath));
+    if ((Length == 0) || (Length >= ARRAYSIZE(DriverPath)))
+    {
+        LogLine("RAMDISK_PROBE_KERNEL_PATH_FAIL error=%lu\r\n", GetLastError());
+        return FALSE;
+    }
+
+    if (lstrlenW(DriverPath) + lstrlenW(L"\\drivers\\ramdisk_probe_drv.sys") + 1 >= ARRAYSIZE(DriverPath))
+    {
+        LogLine("RAMDISK_PROBE_KERNEL_PATH_TOO_LONG\r\n");
+        return FALSE;
+    }
+    lstrcatW(DriverPath, L"\\drivers\\ramdisk_probe_drv.sys");
+
+    ScmHandle = OpenSCManagerW(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
+    if (!ScmHandle)
+    {
+        LogLine("RAMDISK_PROBE_SCM_FAIL error=%lu\r\n", GetLastError());
+        return FALSE;
+    }
+
+    ServiceHandle = CreateServiceW(ScmHandle,
+                                   L"RamdiskProbeFixture",
+                                   L"RAMDISK Probe Fixture",
+                                   SERVICE_START | SERVICE_QUERY_STATUS | DELETE,
+                                   SERVICE_KERNEL_DRIVER,
+                                   SERVICE_DEMAND_START,
+                                   SERVICE_ERROR_NORMAL,
+                                   DriverPath,
+                                   NULL,
+                                   NULL,
+                                   NULL,
+                                   NULL,
+                                   NULL);
+    if (!ServiceHandle)
+    {
+        Error = GetLastError();
+        if (Error == ERROR_SERVICE_EXISTS)
+        {
+            ServiceHandle = OpenServiceW(ScmHandle,
+                                         L"RamdiskProbeFixture",
+                                         SERVICE_START | SERVICE_QUERY_STATUS | DELETE);
+        }
+    }
+
+    if (!ServiceHandle)
+    {
+        LogLine("RAMDISK_PROBE_SERVICE_CREATE_FAIL error=%lu path=%S\r\n",
+                GetLastError(),
+                DriverPath);
+        CloseServiceHandle(ScmHandle);
+        return FALSE;
+    }
+
+    LogLine("RAMDISK_PROBE_KERNEL_START path=%S\r\n", DriverPath);
+    if (!StartServiceW(ServiceHandle, 0, NULL))
+    {
+        Error = GetLastError();
+        if (Error != ERROR_SERVICE_ALREADY_RUNNING)
+        {
+            LogLine("RAMDISK_PROBE_SERVICE_START_FAIL error=%lu\r\n", Error);
+            CloseServiceHandle(ServiceHandle);
+            CloseServiceHandle(ScmHandle);
+            return FALSE;
+        }
+    }
+
+    CloseServiceHandle(ServiceHandle);
+    CloseServiceHandle(ScmHandle);
+    return TRUE;
+}
+
 int
 main(void)
 {
@@ -201,7 +282,22 @@ main(void)
     ProbeRead(DiskHandle, "misaligned-length", SectorSize, SectorSize + 1);
 
     NtClose(DiskHandle);
-    LogLine("RAMDISK_PROBE_DONE\r\n");
+    LogLine("RAMDISK_PROBE_USER_DONE\r\n");
+
+    /*
+     * NtReadFile reaches the mounted filesystem/top attached device for this
+     * boot RAMDISK.  Load a temporary kernel fixture to issue the same reads
+     * directly to the base RAMDISK device object.  Only that kernel fixture
+     * emits RAMDISK_PROBE_DONE after its five direct IRPs complete.
+     */
+    if (!LoadKernelProbe())
+    {
+        LogLine("RAMDISK_PROBE_ABORT\r\n");
+        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
+        return 7;
+    }
+
+    LogLine("RAMDISK_PROBE_KERNEL_LOAD_OK\r\n");
     if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
     Sleep(INFINITE);
     return 0;
