@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+ULONG __cdecl DbgPrint(IN PCH Format, IN ...);
+
 static HANDLE LogHandle = INVALID_HANDLE_VALUE;
 static BYTE Buffer[8192];
 
@@ -29,8 +31,14 @@ LogLine(const char *Format, ...)
         Length = sizeof(Line) - 1;
     Line[Length] = '\0';
 
-    WriteFile(LogHandle, Line, (DWORD)Length, &Written, NULL);
-    FlushFileBuffers(LogHandle);
+    /* COM1 carries the kernel debugger, so always mirror probe telemetry there. */
+    DbgPrint("%s", Line);
+
+    if (LogHandle != INVALID_HANDLE_VALUE)
+    {
+        WriteFile(LogHandle, Line, (DWORD)Length, &Written, NULL);
+        FlushFileBuffers(LogHandle);
+    }
 }
 
 static VOID
@@ -90,7 +98,7 @@ main(void)
                             0,
                             NULL);
     if (LogHandle == INVALID_HANDLE_VALUE)
-        return 2;
+        DbgPrint("RAMDISK_PROBE_COM2_FAIL error=%lu\r\n", GetLastError());
 
     LogLine("RAMDISK_PROBE_BEGIN\r\n");
 
@@ -113,7 +121,7 @@ main(void)
         LogLine("RAMDISK_PROBE_OPEN_FAIL status=0x%08lx iosb=0x%08lx\r\n",
                 Status, IoStatusBlock.Status);
         LogLine("RAMDISK_PROBE_ABORT\r\n");
-        CloseHandle(LogHandle);
+        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
         return 3;
     }
 
@@ -139,7 +147,7 @@ main(void)
                 Status, IoStatusBlock.Status);
         NtClose(DiskHandle);
         LogLine("RAMDISK_PROBE_ABORT\r\n");
-        CloseHandle(LogHandle);
+        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
         return 4;
     }
 
@@ -165,7 +173,7 @@ main(void)
                 Status, IoStatusBlock.Status);
         NtClose(DiskHandle);
         LogLine("RAMDISK_PROBE_ABORT\r\n");
-        CloseHandle(LogHandle);
+        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
         return 5;
     }
 
@@ -182,7 +190,7 @@ main(void)
         LogLine("RAMDISK_PROBE_INVALID_GEOMETRY\r\n");
         NtClose(DiskHandle);
         LogLine("RAMDISK_PROBE_ABORT\r\n");
-        CloseHandle(LogHandle);
+        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
         return 6;
     }
 
@@ -194,7 +202,7 @@ main(void)
 
     NtClose(DiskHandle);
     LogLine("RAMDISK_PROBE_DONE\r\n");
-    CloseHandle(LogHandle);
+    if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
     Sleep(INFINITE);
     return 0;
 }
