@@ -112,7 +112,7 @@ main(void)
     {
         LogLine("RAMDISK_PROBE_OPEN_FAIL status=0x%08lx iosb=0x%08lx\r\n",
                 Status, IoStatusBlock.Status);
-        LogLine("RAMDISK_PROBE_DONE\r\n");
+        LogLine("RAMDISK_PROBE_ABORT\r\n");
         CloseHandle(LogHandle);
         return 3;
     }
@@ -138,7 +138,7 @@ main(void)
         LogLine("RAMDISK_PROBE_LENGTH_FAIL status=0x%08lx iosb=0x%08lx\r\n",
                 Status, IoStatusBlock.Status);
         NtClose(DiskHandle);
-        LogLine("RAMDISK_PROBE_DONE\r\n");
+        LogLine("RAMDISK_PROBE_ABORT\r\n");
         CloseHandle(LogHandle);
         return 4;
     }
@@ -164,7 +164,7 @@ main(void)
         LogLine("RAMDISK_PROBE_GEOMETRY_FAIL status=0x%08lx iosb=0x%08lx\r\n",
                 Status, IoStatusBlock.Status);
         NtClose(DiskHandle);
-        LogLine("RAMDISK_PROBE_DONE\r\n");
+        LogLine("RAMDISK_PROBE_ABORT\r\n");
         CloseHandle(LogHandle);
         return 5;
     }
@@ -180,15 +180,17 @@ main(void)
         (DiskLength < 4 * (LONGLONG)SectorSize))
     {
         LogLine("RAMDISK_PROBE_INVALID_GEOMETRY\r\n");
+        NtClose(DiskHandle);
+        LogLine("RAMDISK_PROBE_ABORT\r\n");
+        CloseHandle(LogHandle);
+        return 6;
     }
-    else
-    {
-        ProbeRead(DiskHandle, "last-sector", DiskLength - SectorSize, SectorSize);
-        ProbeRead(DiskHandle, "at-eof", DiskLength, SectorSize);
-        ProbeRead(DiskHandle, "cross-eof", DiskLength - SectorSize, SectorSize * 2);
-        ProbeRead(DiskHandle, "misaligned-offset", SectorSize + 1, SectorSize);
-        ProbeRead(DiskHandle, "misaligned-length", SectorSize, SectorSize + 1);
-    }
+
+    ProbeRead(DiskHandle, "last-sector", DiskLength - SectorSize, SectorSize);
+    ProbeRead(DiskHandle, "at-eof", DiskLength, SectorSize);
+    ProbeRead(DiskHandle, "cross-eof", DiskLength - SectorSize, SectorSize * 2);
+    ProbeRead(DiskHandle, "misaligned-offset", SectorSize + 1, SectorSize);
+    ProbeRead(DiskHandle, "misaligned-length", SectorSize, SectorSize + 1);
 
     NtClose(DiskHandle);
     LogLine("RAMDISK_PROBE_DONE\r\n");
