@@ -635,6 +635,12 @@ VmxSetCurrentMode(IN PHW_DEVICE_EXTENSION DeviceExtension,
 
     /* A first damage notification makes the newly selected scanout visible. */
     VmxFifoSubmitUpdate(DeviceExtension, 0, 0, Width, Height);
+    DPRINT1("VMX_MODE_READY: index=%lu width=%lu height=%lu bpp=%lu stride=%lu\n",
+            ModeIndex,
+            Width,
+            Height,
+            BitsPerPixel,
+            ModeInfo->ScreenStride);
     return TRUE;
 }
 
