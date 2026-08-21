@@ -1,6 +1,6 @@
 /* Temporary kernel-mode fixture for the RAMDISK I/O bounds investigation. */
 
-#include <ntddk.h>
+#include <ntifs.h>
 #include <ntdddisk.h>
 
 #define RAMDISK_DEVICE_NAME L"\\Device\\Ramdisk{D9B257FC-684E-4DCB-AB79-03CFA2F6B750}"
