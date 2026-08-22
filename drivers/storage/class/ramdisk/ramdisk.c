@@ -726,7 +726,11 @@ RamdiskCreateRamdisk(IN PDEVICE_OBJECT DeviceObject,
     if (DiskType == RAMDISK_BOOT_DISK)
     {
         /* We only allow this as an early-init boot */
-        if (!KeLoaderBlock) return STATUS_INVALID_PARAMETER;
+        if (!KeLoaderBlock &&
+            !RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
 
         /* Save command-line flags */
         if (ExportBootDiskAsCd) Input->Options.ExportAsCd = TRUE;
