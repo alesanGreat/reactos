@@ -552,9 +552,9 @@ Cleanup:
     if (SecondAlias != NULL)
         MmUnmapIoSpace(SecondAlias, PAGE_SIZE);
     if (FirstBacking != NULL)
-        MmFreeContiguousMemorySpecifyCache(FirstBacking, PAGE_SIZE, MmNonCached);
+        MmFreeContiguousMemory(FirstBacking);
     if (SecondBacking != NULL)
-        MmFreeContiguousMemorySpecifyCache(SecondBacking, PAGE_SIZE, MmNonCached);
+        MmFreeContiguousMemory(SecondBacking);
 }
 
 NTSTATUS
