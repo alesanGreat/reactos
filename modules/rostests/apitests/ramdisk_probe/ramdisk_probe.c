@@ -1,4 +1,4 @@
-/* Temporary runtime probe for the RAMDISK I/O bounds investigation. */
+/* Temporary runtime probe for RAMDISK create-failure rollback. */
 
 #define WIN32_NO_STATUS
 #include <windows.h>
@@ -6,12 +6,14 @@
 #include <ndk/iofuncs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/rtlfuncs.h>
-#include <winioctl.h>
+#include <reactos/drivers/ntddrdsk.h>
 #include <stdio.h>
 #include <stdarg.h>
 
+#define PROBE_DEVICE_NAME L"\\Device\\Ramdisk{A1E5C10A-1F52-4AA8-9A44-E56AC942CAFE}"
+#define PROBE_LINK_NAME L"\\GLOBAL??\\Ramdisk{A1E5C10A-1F52-4AA8-9A44-E56AC942CAFE}"
+
 static HANDLE LogHandle = INVALID_HANDLE_VALUE;
-static BYTE Buffer[8192];
 
 static VOID
 LogLine(const char *Format, ...)
@@ -24,14 +26,11 @@ LogLine(const char *Format, ...)
     va_start(Args, Format);
     Length = _vsnprintf(Line, sizeof(Line) - 1, Format, Args);
     va_end(Args);
-
     if (Length < 0)
         Length = sizeof(Line) - 1;
     Line[Length] = '\0';
 
-    /* COM1 carries the kernel debugger, so always mirror probe telemetry there. */
     DbgPrint("%s", Line);
-
     if (LogHandle != INVALID_HANDLE_VALUE)
     {
         WriteFile(LogHandle, Line, (DWORD)Length, &Written, NULL);
@@ -39,138 +38,59 @@ LogLine(const char *Format, ...)
     }
 }
 
-static VOID
-ProbeRead(HANDLE DiskHandle,
-          const char *Name,
-          LONGLONG Offset,
-          DWORD Length)
+static NTSTATUS
+OpenNativeFile(PCWSTR Name, PHANDLE Handle)
 {
-    LARGE_INTEGER Position;
+    UNICODE_STRING ObjectName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
     IO_STATUS_BLOCK IoStatusBlock;
-    NTSTATUS Status;
 
-    Position.QuadPart = Offset;
+    RtlInitUnicodeString(&ObjectName, Name);
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &ObjectName,
+                               OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
     RtlZeroMemory(&IoStatusBlock, sizeof(IoStatusBlock));
-    Status = NtReadFile(DiskHandle,
-                        NULL,
-                        NULL,
-                        NULL,
-                        &IoStatusBlock,
-                        Buffer,
-                        Length,
-                        &Position,
-                        NULL);
-    if (Status == STATUS_PENDING)
-    {
-        WaitForSingleObject(DiskHandle, INFINITE);
-        Status = IoStatusBlock.Status;
-    }
-
-    LogLine("RAMDISK_PROBE_READ name=%s offset=%I64d length=%lu status=0x%08lx iosb=0x%08lx bytes=%Iu\r\n",
-            Name,
-            Offset,
-            Length,
-            Status,
-            IoStatusBlock.Status,
-            IoStatusBlock.Information);
+    *Handle = NULL;
+    return NtOpenFile(Handle,
+                      FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                      &ObjectAttributes,
+                      &IoStatusBlock,
+                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                      FILE_SYNCHRONOUS_IO_NONALERT);
 }
 
-static BOOL
-LoadKernelProbe(VOID)
+static NTSTATUS
+OpenNativeLink(PCWSTR Name, PHANDLE Handle)
 {
-    WCHAR DriverPath[MAX_PATH];
-    SC_HANDLE ScmHandle;
-    SC_HANDLE ServiceHandle;
-    DWORD Error;
-    UINT Length;
+    UNICODE_STRING ObjectName;
+    OBJECT_ATTRIBUTES ObjectAttributes;
 
-    Length = GetSystemDirectoryW(DriverPath, ARRAYSIZE(DriverPath));
-    if ((Length == 0) || (Length >= ARRAYSIZE(DriverPath)))
-    {
-        LogLine("RAMDISK_PROBE_KERNEL_PATH_FAIL error=%lu\r\n", GetLastError());
-        return FALSE;
-    }
-
-    if (lstrlenW(DriverPath) + lstrlenW(L"\\drivers\\ramdisk_probe_drv.sys") + 1 >= ARRAYSIZE(DriverPath))
-    {
-        LogLine("RAMDISK_PROBE_KERNEL_PATH_TOO_LONG\r\n");
-        return FALSE;
-    }
-    lstrcatW(DriverPath, L"\\drivers\\ramdisk_probe_drv.sys");
-
-    ScmHandle = OpenSCManagerW(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
-    if (!ScmHandle)
-    {
-        LogLine("RAMDISK_PROBE_SCM_FAIL error=%lu\r\n", GetLastError());
-        return FALSE;
-    }
-
-    ServiceHandle = CreateServiceW(ScmHandle,
-                                   L"RamdiskProbeFixture",
-                                   L"RAMDISK Probe Fixture",
-                                   SERVICE_START | SERVICE_QUERY_STATUS | DELETE,
-                                   SERVICE_KERNEL_DRIVER,
-                                   SERVICE_DEMAND_START,
-                                   SERVICE_ERROR_NORMAL,
-                                   DriverPath,
-                                   NULL,
-                                   NULL,
-                                   NULL,
-                                   NULL,
-                                   NULL);
-    if (!ServiceHandle)
-    {
-        Error = GetLastError();
-        if (Error == ERROR_SERVICE_EXISTS)
-        {
-            ServiceHandle = OpenServiceW(ScmHandle,
-                                         L"RamdiskProbeFixture",
-                                         SERVICE_START | SERVICE_QUERY_STATUS | DELETE);
-        }
-    }
-
-    if (!ServiceHandle)
-    {
-        LogLine("RAMDISK_PROBE_SERVICE_CREATE_FAIL error=%lu path=%S\r\n",
-                GetLastError(),
-                DriverPath);
-        CloseServiceHandle(ScmHandle);
-        return FALSE;
-    }
-
-    LogLine("RAMDISK_PROBE_KERNEL_START path=%S\r\n", DriverPath);
-    if (!StartServiceW(ServiceHandle, 0, NULL))
-    {
-        Error = GetLastError();
-        if (Error != ERROR_SERVICE_ALREADY_RUNNING)
-        {
-            LogLine("RAMDISK_PROBE_SERVICE_START_FAIL error=%lu\r\n", Error);
-            CloseServiceHandle(ServiceHandle);
-            CloseServiceHandle(ScmHandle);
-            return FALSE;
-        }
-    }
-
-    CloseServiceHandle(ServiceHandle);
-    CloseServiceHandle(ScmHandle);
-    return TRUE;
+    RtlInitUnicodeString(&ObjectName, Name);
+    InitializeObjectAttributes(&ObjectAttributes,
+                               &ObjectName,
+                               OBJ_CASE_INSENSITIVE,
+                               NULL,
+                               NULL);
+    *Handle = NULL;
+    return NtOpenSymbolicLinkObject(Handle, SYMBOLIC_LINK_QUERY, &ObjectAttributes);
 }
 
 int
 main(void)
 {
-    HANDLE DiskHandle = NULL;
-    GET_LENGTH_INFORMATION LengthInfo;
-    DISK_GEOMETRY Geometry;
-    IO_STATUS_BLOCK IoStatusBlock;
-    UNICODE_STRING DeviceName;
+    static const GUID ProbeGuid =
+        {0xA1E5C10A, 0x1F52, 0x4AA8, {0x9A, 0x44, 0xE5, 0x6A, 0xC9, 0x42, 0xCA, 0xFE}};
+    UNICODE_STRING BusName = RTL_CONSTANT_STRING(L"\\Device\\Ramdisk");
     OBJECT_ATTRIBUTES ObjectAttributes;
-    NTSTATUS Status;
-    DWORD SectorSize;
-    LONGLONG DiskLength;
+    IO_STATUS_BLOCK IoStatusBlock;
+    RAMDISK_CREATE_INPUT Input;
+    HANDLE BusHandle = NULL;
+    HANDLE ObjectHandle = NULL;
+    NTSTATUS Status, DeviceStatus, LinkStatus;
 
-    DbgPrint("RAMDISK_PROBE_ENTRY\r\n");
-
+    DbgPrint("RAMDISK_CREATE_PROBE_ENTRY\r\n");
     LogHandle = CreateFileA("\\\\.\\COM2",
                             GENERIC_WRITE,
                             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -178,127 +98,101 @@ main(void)
                             OPEN_EXISTING,
                             0,
                             NULL);
-    if (LogHandle == INVALID_HANDLE_VALUE)
-        DbgPrint("RAMDISK_PROBE_COM2_FAIL error=%lu\r\n", GetLastError());
+    LogLine("RAMDISK_CREATE_PROBE_BEGIN\r\n");
 
-    LogLine("RAMDISK_PROBE_BEGIN\r\n");
-
-    RtlInitUnicodeString(&DeviceName,
-                         L"\\Device\\Ramdisk{D9B257FC-684E-4DCB-AB79-03CFA2F6B750}");
     InitializeObjectAttributes(&ObjectAttributes,
-                               &DeviceName,
+                               &BusName,
                                OBJ_CASE_INSENSITIVE,
                                NULL,
                                NULL);
     RtlZeroMemory(&IoStatusBlock, sizeof(IoStatusBlock));
-    Status = NtOpenFile(&DiskHandle,
-                        FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+    Status = NtOpenFile(&BusHandle,
+                        FILE_READ_DATA | FILE_WRITE_DATA | SYNCHRONIZE,
                         &ObjectAttributes,
                         &IoStatusBlock,
                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                         FILE_SYNCHRONOUS_IO_NONALERT);
     if (!NT_SUCCESS(Status))
     {
-        LogLine("RAMDISK_PROBE_OPEN_FAIL status=0x%08lx iosb=0x%08lx\r\n",
-                Status, IoStatusBlock.Status);
-        LogLine("RAMDISK_PROBE_ABORT\r\n");
-        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
-        return 3;
+        LogLine("RAMDISK_CREATE_PROBE_BUS_OPEN_FAIL status=0x%08lx\r\n", Status);
+        goto Abort;
     }
 
+    RtlZeroMemory(&Input, sizeof(Input));
+    Input.Version = sizeof(Input);
+    Input.DiskGuid = ProbeGuid;
+    Input.DiskType = RAMDISK_BOOT_DISK;
+    Input.DiskLength.QuadPart = 16 * 1024 * 1024;
+    Input.BasePage = 1;
+    Input.DriveLetter = L'Z';
+
     RtlZeroMemory(&IoStatusBlock, sizeof(IoStatusBlock));
-    Status = NtDeviceIoControlFile(DiskHandle,
+    Status = NtDeviceIoControlFile(BusHandle,
                                    NULL,
                                    NULL,
                                    NULL,
                                    &IoStatusBlock,
-                                   IOCTL_DISK_GET_LENGTH_INFO,
+                                   FSCTL_CREATE_RAM_DISK,
+                                   &Input,
+                                   sizeof(Input),
                                    NULL,
-                                   0,
-                                   &LengthInfo,
-                                   sizeof(LengthInfo));
+                                   0);
     if (Status == STATUS_PENDING)
     {
-        WaitForSingleObject(DiskHandle, INFINITE);
+        WaitForSingleObject(BusHandle, INFINITE);
         Status = IoStatusBlock.Status;
     }
-    if (!NT_SUCCESS(Status))
+    else if (NT_SUCCESS(Status) || NT_WARNING(Status))
     {
-        LogLine("RAMDISK_PROBE_LENGTH_FAIL status=0x%08lx iosb=0x%08lx\r\n",
-                Status, IoStatusBlock.Status);
-        NtClose(DiskHandle);
-        LogLine("RAMDISK_PROBE_ABORT\r\n");
-        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
-        return 4;
-    }
-
-    RtlZeroMemory(&IoStatusBlock, sizeof(IoStatusBlock));
-    Status = NtDeviceIoControlFile(DiskHandle,
-                                   NULL,
-                                   NULL,
-                                   NULL,
-                                   &IoStatusBlock,
-                                   IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                                   NULL,
-                                   0,
-                                   &Geometry,
-                                   sizeof(Geometry));
-    if (Status == STATUS_PENDING)
-    {
-        WaitForSingleObject(DiskHandle, INFINITE);
         Status = IoStatusBlock.Status;
     }
-    if (!NT_SUCCESS(Status))
+
+    LogLine("RAMDISK_CREATE_PROBE_REQUEST status=0x%08lx iosb=0x%08lx\r\n",
+            Status,
+            IoStatusBlock.Status);
+    NtClose(BusHandle);
+    BusHandle = NULL;
+
+    DeviceStatus = OpenNativeFile(PROBE_DEVICE_NAME, &ObjectHandle);
+    if (NT_SUCCESS(DeviceStatus))
     {
-        LogLine("RAMDISK_PROBE_GEOMETRY_FAIL status=0x%08lx iosb=0x%08lx\r\n",
-                Status, IoStatusBlock.Status);
-        NtClose(DiskHandle);
-        LogLine("RAMDISK_PROBE_ABORT\r\n");
-        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
-        return 5;
+        NtClose(ObjectHandle);
+        ObjectHandle = NULL;
+    }
+    LogLine("RAMDISK_CREATE_PROBE_DEVICE_OPEN status=0x%08lx\r\n", DeviceStatus);
+
+    LinkStatus = OpenNativeLink(PROBE_LINK_NAME, &ObjectHandle);
+    if (NT_SUCCESS(LinkStatus))
+    {
+        NtClose(ObjectHandle);
+        ObjectHandle = NULL;
+    }
+    LogLine("RAMDISK_CREATE_PROBE_LINK_OPEN status=0x%08lx\r\n", LinkStatus);
+
+    if ((Status != STATUS_INSUFFICIENT_RESOURCES) ||
+        NT_SUCCESS(DeviceStatus) ||
+        NT_SUCCESS(LinkStatus))
+    {
+        LogLine("RAMDISK_CREATE_PROBE_FAIL request=0x%08lx device=0x%08lx link=0x%08lx\r\n",
+                Status,
+                DeviceStatus,
+                LinkStatus);
+        goto Abort;
     }
 
-    DiskLength = LengthInfo.Length.QuadPart;
-    SectorSize = Geometry.BytesPerSector;
-    LogLine("RAMDISK_PROBE_INFO length=%I64d sector=%lu media=%u\r\n",
-            DiskLength, SectorSize, Geometry.MediaType);
-
-    if ((DiskLength <= 0) ||
-        (SectorSize == 0) ||
-        (SectorSize > sizeof(Buffer) / 2) ||
-        (DiskLength < 4 * (LONGLONG)SectorSize))
-    {
-        LogLine("RAMDISK_PROBE_INVALID_GEOMETRY\r\n");
-        NtClose(DiskHandle);
-        LogLine("RAMDISK_PROBE_ABORT\r\n");
-        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
-        return 6;
-    }
-
-    ProbeRead(DiskHandle, "last-sector", DiskLength - SectorSize, SectorSize);
-    ProbeRead(DiskHandle, "at-eof", DiskLength, SectorSize);
-    ProbeRead(DiskHandle, "cross-eof", DiskLength - SectorSize, SectorSize * 2);
-    ProbeRead(DiskHandle, "misaligned-offset", SectorSize + 1, SectorSize);
-    ProbeRead(DiskHandle, "misaligned-length", SectorSize, SectorSize + 1);
-
-    NtClose(DiskHandle);
-    LogLine("RAMDISK_PROBE_USER_DONE\r\n");
-
-    /*
-     * NtReadFile reaches the mounted filesystem/top attached device for this
-     * boot RAMDISK.  Load a temporary kernel fixture to issue the same reads
-     * directly to the base RAMDISK device object.  Only that kernel fixture
-     * emits RAMDISK_PROBE_DONE after its five direct IRPs complete.
-     */
-    if (!LoadKernelProbe())
-    {
-        LogLine("RAMDISK_PROBE_ABORT\r\n");
-        if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
-        return 7;
-    }
-
-    LogLine("RAMDISK_PROBE_KERNEL_LOAD_OK\r\n");
-    if (LogHandle != INVALID_HANDLE_VALUE) CloseHandle(LogHandle);
+    LogLine("RAMDISK_CREATE_PROBE_DONE\r\n");
+    if (LogHandle != INVALID_HANDLE_VALUE)
+        CloseHandle(LogHandle);
     Sleep(INFINITE);
     return 0;
+
+Abort:
+    if (BusHandle)
+        NtClose(BusHandle);
+    if (ObjectHandle)
+        NtClose(ObjectHandle);
+    LogLine("RAMDISK_CREATE_PROBE_ABORT\r\n");
+    if (LogHandle != INVALID_HANDLE_VALUE)
+        CloseHandle(LogHandle);
+    return 1;
 }

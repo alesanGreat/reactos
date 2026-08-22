@@ -126,6 +126,10 @@ BOOLEAN ExportBootDiskAsCd;
 BOOLEAN IsWinPEBoot;
 PDEVICE_OBJECT RamdiskBusFdo;
 
+/* Temporary runtime fixture: force a late create failure for one GUID. */
+static const GUID RamdiskCreateProbeGuid =
+{0xA1E5C10A, 0x1F52, 0x4AA8, {0x9A, 0x44, 0xE5, 0x6A, 0xC9, 0x42, 0xCA, 0xFE}};
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -492,6 +496,16 @@ RamdiskCreateDiskDevice(IN PRAMDISK_BUS_EXTENSION DeviceExtension,
 
         }
 
+        /* Temporary fixture: fail after the device and global link exist. */
+        if (RtlEqualMemory(&Input->DiskGuid,
+                           &RamdiskCreateProbeGuid,
+                           sizeof(Input->DiskGuid)))
+        {
+            DPRINT1("RAMDISK_CREATE_PROBE_INJECT\n");
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto FailCreate;
+        }
+
         /* Setup the device object flags */
         DeviceObject->Flags |= (DO_XIP | DO_POWER_PAGABLE | DO_DIRECT_IO);
         DeviceObject->AlignmentRequirement = 1;
@@ -653,6 +667,13 @@ FailCreate:
     if (GuidString.Buffer)
     {
         RtlFreeUnicodeString(&GuidString);
+    }
+
+    if (RtlEqualMemory(&Input->DiskGuid,
+                       &RamdiskCreateProbeGuid,
+                       sizeof(Input->DiskGuid)))
+    {
+        DPRINT1("RAMDISK_CREATE_PROBE_CLEANUP status=0x%08lx\n", Status);
     }
 
     return Status;
