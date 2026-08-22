@@ -452,6 +452,111 @@ PortDispatchPower(
 /*
  * @implemented
  */
+static
+VOID
+PortDeviceBaseRuntimeProbe(VOID)
+{
+    FDO_DEVICE_EXTENSION DeviceExtension;
+    MINIPORT Miniport;
+    MINIPORT_DEVICE_EXTENSION MiniportExtension;
+    PMAPPED_ADDRESS FirstMapping = NULL, SecondMapping = NULL;
+    PHYSICAL_ADDRESS LowAddress, HighAddress, Boundary, PhysicalAddress;
+    PVOID FirstBacking = NULL, SecondBacking = NULL;
+    PVOID FirstAlias = NULL, SecondAlias = NULL;
+
+    RtlZeroMemory(&DeviceExtension, sizeof(DeviceExtension));
+    RtlZeroMemory(&Miniport, sizeof(Miniport));
+    RtlZeroMemory(&MiniportExtension, sizeof(MiniportExtension));
+    LowAddress.QuadPart = 0;
+    HighAddress.QuadPart = MAXLONGLONG;
+    Boundary.QuadPart = 0;
+
+    FirstBacking = MmAllocateContiguousMemorySpecifyCache(PAGE_SIZE,
+                                                          LowAddress,
+                                                          HighAddress,
+                                                          Boundary,
+                                                          MmNonCached);
+    SecondBacking = MmAllocateContiguousMemorySpecifyCache(PAGE_SIZE,
+                                                           LowAddress,
+                                                           HighAddress,
+                                                           Boundary,
+                                                           MmNonCached);
+    if ((FirstBacking == NULL) || (SecondBacking == NULL))
+    {
+        DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL allocation\n");
+        goto Cleanup;
+    }
+
+    PhysicalAddress = MmGetPhysicalAddress(FirstBacking);
+    FirstAlias = MmMapIoSpace(PhysicalAddress, PAGE_SIZE, MmNonCached);
+    PhysicalAddress = MmGetPhysicalAddress(SecondBacking);
+    SecondAlias = MmMapIoSpace(PhysicalAddress, PAGE_SIZE, MmNonCached);
+    if ((FirstAlias == NULL) || (SecondAlias == NULL))
+    {
+        DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL map\n");
+        goto Cleanup;
+    }
+
+    FirstMapping = ExAllocatePoolWithTag(NonPagedPool,
+                                         sizeof(*FirstMapping),
+                                         TAG_ADDRESS_MAPPING);
+    SecondMapping = ExAllocatePoolWithTag(NonPagedPool,
+                                          sizeof(*SecondMapping),
+                                          TAG_ADDRESS_MAPPING);
+    if ((FirstMapping == NULL) || (SecondMapping == NULL))
+    {
+        DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL metadata\n");
+        goto Cleanup;
+    }
+
+    RtlZeroMemory(FirstMapping, sizeof(*FirstMapping));
+    RtlZeroMemory(SecondMapping, sizeof(*SecondMapping));
+    DeviceExtension.MappedAddressList = FirstMapping;
+    Miniport.DeviceExtension = &DeviceExtension;
+    MiniportExtension.Miniport = &Miniport;
+
+    FirstMapping->MappedAddress = FirstAlias;
+    FirstMapping->NumberOfBytes = PAGE_SIZE;
+    FirstMapping->NextMappedAddress = SecondMapping;
+    SecondMapping->MappedAddress = SecondAlias;
+    SecondMapping->NumberOfBytes = PAGE_SIZE;
+
+    StorPortFreeDeviceBase(MiniportExtension.HwDeviceExtension, SecondAlias);
+    SecondAlias = NULL;
+    SecondMapping = NULL;
+    if ((DeviceExtension.MappedAddressList != FirstMapping) ||
+        (FirstMapping->NextMappedAddress != NULL))
+    {
+        DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL tail-unlink\n");
+        goto Cleanup;
+    }
+
+    StorPortFreeDeviceBase(MiniportExtension.HwDeviceExtension, FirstAlias);
+    FirstAlias = NULL;
+    FirstMapping = NULL;
+    if (DeviceExtension.MappedAddressList != NULL)
+    {
+        DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL head-unlink\n");
+        goto Cleanup;
+    }
+
+    DPRINT1("STORPORT_DEVICE_BASE_PROBE_DONE\n");
+
+Cleanup:
+    if (FirstMapping != NULL)
+        ExFreePoolWithTag(FirstMapping, TAG_ADDRESS_MAPPING);
+    if (SecondMapping != NULL)
+        ExFreePoolWithTag(SecondMapping, TAG_ADDRESS_MAPPING);
+    if (FirstAlias != NULL)
+        MmUnmapIoSpace(FirstAlias, PAGE_SIZE);
+    if (SecondAlias != NULL)
+        MmUnmapIoSpace(SecondAlias, PAGE_SIZE);
+    if (FirstBacking != NULL)
+        MmFreeContiguousMemorySpecifyCache(FirstBacking, PAGE_SIZE, MmNonCached);
+    if (SecondBacking != NULL)
+        MmFreeContiguousMemorySpecifyCache(SecondBacking, PAGE_SIZE, MmNonCached);
+}
+
 NTSTATUS
 NTAPI
 DriverEntry(
@@ -459,6 +564,7 @@ DriverEntry(
     _In_ PUNICODE_STRING RegistryPath)
 {
     DPRINT1("DriverEntry(%p %p)\n", DriverObject, RegistryPath);
+    PortDeviceBaseRuntimeProbe();
     return STATUS_SUCCESS;
 }
 
