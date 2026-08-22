@@ -130,6 +130,22 @@ PDEVICE_OBJECT RamdiskBusFdo;
 static const GUID RamdiskCreateProbeGuid =
 {0xA1E5C10A, 0x1F52, 0x4AA8, {0x9A, 0x44, 0xE5, 0x6A, 0xC9, 0x42, 0xCA, 0xFE}};
 
+static BOOLEAN
+RamdiskCreateProbeGuidMatches(_In_ const GUID *Guid)
+{
+    return (Guid->Data1 == RamdiskCreateProbeGuid.Data1) &&
+           (Guid->Data2 == RamdiskCreateProbeGuid.Data2) &&
+           (Guid->Data3 == RamdiskCreateProbeGuid.Data3) &&
+           (Guid->Data4[0] == RamdiskCreateProbeGuid.Data4[0]) &&
+           (Guid->Data4[1] == RamdiskCreateProbeGuid.Data4[1]) &&
+           (Guid->Data4[2] == RamdiskCreateProbeGuid.Data4[2]) &&
+           (Guid->Data4[3] == RamdiskCreateProbeGuid.Data4[3]) &&
+           (Guid->Data4[4] == RamdiskCreateProbeGuid.Data4[4]) &&
+           (Guid->Data4[5] == RamdiskCreateProbeGuid.Data4[5]) &&
+           (Guid->Data4[6] == RamdiskCreateProbeGuid.Data4[6]) &&
+           (Guid->Data4[7] == RamdiskCreateProbeGuid.Data4[7]);
+}
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -497,9 +513,7 @@ RamdiskCreateDiskDevice(IN PRAMDISK_BUS_EXTENSION DeviceExtension,
         }
 
         /* Temporary fixture: fail after the device and global link exist. */
-        if (RtlEqualMemory(&Input->DiskGuid,
-                           &RamdiskCreateProbeGuid,
-                           sizeof(Input->DiskGuid)))
+        if (RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
         {
             DPRINT1("RAMDISK_CREATE_PROBE_INJECT\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -669,9 +683,7 @@ FailCreate:
         RtlFreeUnicodeString(&GuidString);
     }
 
-    if (RtlEqualMemory(&Input->DiskGuid,
-                       &RamdiskCreateProbeGuid,
-                       sizeof(Input->DiskGuid)))
+    if (RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
     {
         DPRINT1("RAMDISK_CREATE_PROBE_CLEANUP status=0x%08lx\n", Status);
     }
