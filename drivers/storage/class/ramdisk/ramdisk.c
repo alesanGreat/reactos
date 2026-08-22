@@ -133,7 +133,17 @@ static const GUID RamdiskCreateProbeGuid =
 static BOOLEAN
 RamdiskCreateProbeGuidMatches(_In_ const GUID *Guid)
 {
-    return RtlEqualMemory(Guid, &RamdiskCreateProbeGuid, sizeof(*Guid));
+    return (Guid->Data1 == RamdiskCreateProbeGuid.Data1) &&
+           (Guid->Data2 == RamdiskCreateProbeGuid.Data2) &&
+           (Guid->Data3 == RamdiskCreateProbeGuid.Data3) &&
+           (Guid->Data4[0] == RamdiskCreateProbeGuid.Data4[0]) &&
+           (Guid->Data4[1] == RamdiskCreateProbeGuid.Data4[1]) &&
+           (Guid->Data4[2] == RamdiskCreateProbeGuid.Data4[2]) &&
+           (Guid->Data4[3] == RamdiskCreateProbeGuid.Data4[3]) &&
+           (Guid->Data4[4] == RamdiskCreateProbeGuid.Data4[4]) &&
+           (Guid->Data4[5] == RamdiskCreateProbeGuid.Data4[5]) &&
+           (Guid->Data4[6] == RamdiskCreateProbeGuid.Data4[6]) &&
+           (Guid->Data4[7] == RamdiskCreateProbeGuid.Data4[7]);
 }
 
 /* FUNCTIONS ******************************************************************/
