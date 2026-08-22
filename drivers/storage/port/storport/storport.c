@@ -463,6 +463,7 @@ PortDeviceBaseRuntimeProbe(VOID)
     PHYSICAL_ADDRESS LowAddress, HighAddress, Boundary, PhysicalAddress;
     PVOID FirstBacking = NULL, SecondBacking = NULL;
     PVOID FirstAlias = NULL, SecondAlias = NULL;
+    BOOLEAN Passed = FALSE;
 
     RtlZeroMemory(&DeviceExtension, sizeof(DeviceExtension));
     RtlZeroMemory(&Miniport, sizeof(Miniport));
@@ -522,27 +523,29 @@ PortDeviceBaseRuntimeProbe(VOID)
     SecondMapping->NumberOfBytes = PAGE_SIZE;
 
     StorPortFreeDeviceBase(MiniportExtension.HwDeviceExtension, SecondAlias);
-    SecondAlias = NULL;
-    SecondMapping = NULL;
     if ((DeviceExtension.MappedAddressList != FirstMapping) ||
         (FirstMapping->NextMappedAddress != NULL))
     {
         DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL tail-unlink\n");
         goto Cleanup;
     }
+    SecondAlias = NULL;
+    SecondMapping = NULL;
 
     StorPortFreeDeviceBase(MiniportExtension.HwDeviceExtension, FirstAlias);
-    FirstAlias = NULL;
-    FirstMapping = NULL;
     if (DeviceExtension.MappedAddressList != NULL)
     {
         DPRINT1("STORPORT_DEVICE_BASE_PROBE_FAIL head-unlink\n");
         goto Cleanup;
     }
+    FirstAlias = NULL;
+    FirstMapping = NULL;
 
+    Passed = TRUE;
     DPRINT1("STORPORT_DEVICE_BASE_PROBE_DONE\n");
 
 Cleanup:
+    DeviceExtension.MappedAddressList = NULL;
     if (FirstMapping != NULL)
         ExFreePoolWithTag(FirstMapping, TAG_ADDRESS_MAPPING);
     if (SecondMapping != NULL)
@@ -555,6 +558,10 @@ Cleanup:
         MmFreeContiguousMemory(FirstBacking);
     if (SecondBacking != NULL)
         MmFreeContiguousMemory(SecondBacking);
+
+    DPRINT1("STORPORT_DEVICE_BASE_PROBE_RESULT %s\n",
+            Passed ? "pass" : "fail");
+    DPRINT1("STORPORT_DEVICE_BASE_PROBE_OBSERVED\n");
 }
 
 NTSTATUS
