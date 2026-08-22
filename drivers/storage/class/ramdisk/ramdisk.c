@@ -126,6 +126,16 @@ BOOLEAN ExportBootDiskAsCd;
 BOOLEAN IsWinPEBoot;
 PDEVICE_OBJECT RamdiskBusFdo;
 
+/* Temporary runtime fixture: force a late create failure for one GUID. */
+static const GUID RamdiskCreateProbeGuid =
+{0xA1E5C10A, 0x1F52, 0x4AA8, {0x9A, 0x44, 0xE5, 0x6A, 0xC9, 0x42, 0xCA, 0xFE}};
+
+static BOOLEAN
+RamdiskCreateProbeGuidMatches(_In_ const GUID *Guid)
+{
+    return RtlEqualMemory(Guid, &RamdiskCreateProbeGuid, sizeof(*Guid));
+}
+
 /* FUNCTIONS ******************************************************************/
 
 VOID
@@ -504,6 +514,14 @@ RamdiskCreateDiskDevice(IN PRAMDISK_BUS_EXTENSION DeviceExtension,
 
         }
 
+        /* Temporary fixture: fail after the device and global link exist. */
+        if (RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
+        {
+            DPRINT1("RAMDISK_CREATE_PROBE_INJECT\n");
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto FailCreate;
+        }
+
         /* Setup the device object flags */
         DeviceObject->Flags |= (DO_XIP | DO_POWER_PAGABLE | DO_DIRECT_IO);
         DeviceObject->AlignmentRequirement = 1;
@@ -627,7 +645,16 @@ RamdiskCreateDiskDevice(IN PRAMDISK_BUS_EXTENSION DeviceExtension,
     }
 
 FailCreate:
-    UNIMPLEMENTED_DBGBREAK();
+    if (RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
+    {
+        DPRINT1("RAMDISK_CREATE_PROBE_BASELINE_FAILCREATE status=0x%08lx\n",
+                Status);
+    }
+    else
+    {
+        UNIMPLEMENTED_DBGBREAK();
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -666,7 +693,11 @@ RamdiskCreateRamdisk(IN PDEVICE_OBJECT DeviceObject,
     if (DiskType == RAMDISK_BOOT_DISK)
     {
         /* We only allow this as an early-init boot */
-        if (!KeLoaderBlock) return STATUS_INVALID_PARAMETER;
+        if (!KeLoaderBlock &&
+            !RamdiskCreateProbeGuidMatches(&Input->DiskGuid))
+        {
+            return STATUS_INVALID_PARAMETER;
+        }
 
         /* Save command-line flags */
         if (ExportBootDiskAsCd) Input->Options.ExportAsCd = TRUE;
