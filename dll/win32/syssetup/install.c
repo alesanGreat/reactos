@@ -1178,6 +1178,28 @@ InstallLiveCD(VOID)
 
     SetupCloseInfFile(hSysSetupInf);
 
+    /* Launch the temporary RAMDISK probe after LiveCD setup is ready. */
+    ZeroMemory(&StartupInfo, sizeof(StartupInfo));
+    StartupInfo.cb = sizeof(StartupInfo);
+    bRes = CreateProcessW(L"ramdisk_probe.exe",
+                          NULL,
+                          NULL,
+                          NULL,
+                          FALSE,
+                          0,
+                          NULL,
+                          NULL,
+                          &StartupInfo,
+                          &ProcessInformation);
+    if (!bRes)
+    {
+        DPRINT1("RAMDISK_PROBE_LAUNCH_FAIL error=%lu\n", GetLastError());
+        goto error;
+    }
+
+    CloseHandle(ProcessInformation.hThread);
+    CloseHandle(ProcessInformation.hProcess);
+
     /* Run the shell */
     ZeroMemory(&StartupInfo, sizeof(StartupInfo));
     StartupInfo.cb = sizeof(StartupInfo);
