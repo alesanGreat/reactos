@@ -796,6 +796,7 @@ VmxSubmitDamageRect(IN PHW_DEVICE_EXTENSION DeviceExtension,
                     IN PVMX_SVGA_UPDATE_RECT Damage,
                     OUT PSTATUS_BLOCK StatusBlock)
 {
+    static BOOLEAN DamageProbeReported;
     PVIDEO_MODE_INFORMATION ModeInfo;
     LONG Left;
     LONG Top;
@@ -855,6 +856,14 @@ VmxSubmitDamageRect(IN PHW_DEVICE_EXTENSION DeviceExtension,
 
     StatusBlock->Status = NO_ERROR;
     StatusBlock->Information = 0;
+
+    /* Temporary runtime oracle: this path is only used by vmx_svga_disp. */
+    if (!DamageProbeReported)
+    {
+        DPRINT1("VMX_DAMAGE_READY\n");
+        DamageProbeReported = TRUE;
+    }
+
     return TRUE;
 }
 
